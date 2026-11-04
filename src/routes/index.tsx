@@ -252,7 +252,7 @@ function Index() {
 
         {/* NVT -> straight -> 90° -> house */}
         <div className="w-full max-w-4xl rounded-2xl border border-border bg-card p-4">
-          <svg viewBox="0 0 900 220" className="w-full">
+          <svg viewBox="0 -30 900 250" className="w-full">
             {/* ground */}
             <line x1="0" y1="60" x2="900" y2="60" stroke="var(--border)" strokeDasharray="4 6" />
             {/* NVT box */}
