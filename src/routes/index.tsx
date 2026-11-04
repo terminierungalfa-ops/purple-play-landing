@@ -87,6 +87,7 @@ function Index() {
   const [dist, setDist] = useState(0);
   const [phase, setPhase] = useState<Phase>("idle");
   const [best, setBest] = useState(0);
+  const pipeRef = useRef<SVGPathElement>(null);
   const st = useRef({ bar: 0, dist: 0, phase: "idle" as Phase, stuckAt: 0 });
 
   useEffect(() => {
@@ -167,6 +168,12 @@ function Index() {
   const arc = 0.75 * C;
   const fill = arc * Math.min(bar / MAX_BAR, 1);
   const progress = Math.min(dist / GOAL, 1);
+  const stone = (() => {
+    const el = pipeRef.current;
+    if (!el || phase !== "stuck") return { x: 0, y: 0 };
+    const p = el.getPointAtLength(el.getTotalLength() * Math.min(progress + 0.012, 1));
+    return { x: p.x, y: p.y };
+  })();
   const critical = phase === "jetting" && bar >= 9;
 
   return (
@@ -225,13 +232,13 @@ function Index() {
         <div className="w-full max-w-4xl rounded-2xl border border-border bg-card p-4">
           <svg viewBox="0 0 900 140" className="w-full">
             <path d={PIPE} fill="none" stroke="var(--muted-foreground)" strokeOpacity="0.45" strokeWidth="22" strokeLinecap="round" />
-            <path d={PIPE} fill="none" stroke="var(--gauge)" strokeWidth="14" strokeLinecap="round" />
+            <path ref={pipeRef} d={PIPE} fill="none" stroke="var(--gauge)" strokeWidth="14" strokeLinecap="round" />
             <path d={PIPE} pathLength={1000} fill="none" stroke="var(--fiber)" strokeWidth="4" strokeLinecap="round"
               strokeDasharray={`${dist} 1000`} style={{ filter: "drop-shadow(0 0 6px var(--fiber))" }} />
             <path d={PIPE} pathLength={1000} fill="none" stroke="var(--fiber)" strokeWidth="2" strokeOpacity="0.8"
               strokeDasharray="6 24" strokeDashoffset={-dist * 3} />
             {phase === "stuck" && (
-              <circle r="11" fill="var(--destructive)" style={{ offsetPath: `path("${PIPE}")`, offsetDistance: `${progress * 100 + 1}%` }}>
+              <circle r="11" fill="var(--destructive)" cx={stone.x} cy={stone.y}>
                 <animate attributeName="r" from="0" to="11" dur="0.25s" />
               </circle>
             )}
