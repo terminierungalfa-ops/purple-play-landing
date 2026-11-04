@@ -354,7 +354,12 @@ function Index() {
           </svg>
           <div className="mt-2 flex justify-between font-mono text-xs text-muted-foreground">
             <span>{Math.round(dist)} / {GOAL} m</span>
-            <span>Rekord: {best} m</span>
+            <span>
+              Rekord: {best} m
+              {phase === "jetting" && dist > runStartBest.current ? (
+                <span className="text-gold"> · neuer Rekord!</span>
+              ) : null}
+            </span>
           </div>
         </div>
 
