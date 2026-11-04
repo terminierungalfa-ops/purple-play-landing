@@ -24,7 +24,7 @@ export const Route = createFileRoute("/")({
 });
 
 type Theme = "lila" | "light" | "dark";
-type Phase = "idle" | "jetting" | "overload" | "stuck" | "done";
+type Phase = "idle" | "jetting" | "overload" | "stuck" | "snapped";
 
 const MAX_BAR = 12;
 const GOAL = 1000; // metres
@@ -36,6 +36,9 @@ const MSG = {
   hot: "Achtung: Drehzahl im roten Bereich! Über 11 BAR fliegt das Sicherheitsventil.",
   overload: "Druckrohr-Explosion! 11 BAR überschritten – Sicherheitsventil abgeflogen. Trasse reinigen und neu einblasen.",
   stuck: "Kollision im Rohrleitungssystem! Glasfaser-Stein im Weg! Ein Laden der Seite ist derzeit leider nicht möglich. Bitte das Glasfaserkabel zurückziehen und erneut versuchen zu jetten!",
+  snapped: "RATSCH! Kabelriss – zu schnell eingeblasen! Über 140 m/s hält keine Glasfaser durch. Kabel neu spleißen und nochmal ran.",
+  fast: "Vorsicht, Vorschub am Limit! Über 140 m/s reißt das Kabel.",
+  weak: "Zu wenig Druck für dieses Tempo – das Kabel schleift. Mehr BAR geben!",
   done: "1.000 m eingeblasen – Trasse kalibriert! Die echte Website folgt trotzdem bald. Danke fürs Mitbauen.",
 };
 
@@ -88,7 +91,8 @@ function Index() {
   const [phase, setPhase] = useState<Phase>("idle");
   const [best, setBest] = useState(0);
   const pipeRef = useRef<SVGPathElement>(null);
-  const st = useRef({ bar: 0, dist: 0, phase: "idle" as Phase, stuckAt: 0, dir: 0 });
+  const [spd, setSpd] = useState(0);
+  const st = useRef({ bar: 0, dist: 0, phase: "idle" as Phase, stuckAt: 0, dir: 0, spd: 0, sdir: 0, over: 0 });
 
   useEffect(() => {
     const saved = localStorage.getItem("omn-theme") as Theme | null;
@@ -112,18 +116,23 @@ function Index() {
       const s = st.current;
       if (s.phase === "jetting") {
         s.bar = Math.max(0, Math.min(MAX_BAR, s.bar + s.dir * 3 * dt));
-        const speed = (s.bar / 11) * 160;
-        s.dist += speed * dt * 0.6;
+        s.spd = Math.max(0, Math.min(160, s.spd + s.sdir * 45 * dt));
+        const eff = s.bar < 3 ? s.spd * 0.25 : s.spd;
+        s.dist += eff * dt * 0.6;
+        s.over = s.spd > 140 ? s.over + dt : 0;
         if (s.bar > 11) s.phase = "overload";
+        else if (s.over > 0.8) s.phase = "snapped";
         else if (s.dist >= s.stuckAt) { s.dist = s.stuckAt; s.phase = "stuck"; }
         if (s.phase !== "jetting") {
           s.dir = 0;
+          s.sdir = 0;
           setPhase(s.phase);
           const b = Math.max(Number(localStorage.getItem("omn-best") || 0), Math.round(s.dist));
           localStorage.setItem("omn-best", String(b));
           setBest(b);
         }
         setBar(s.bar);
+        setSpd(s.spd);
         setDist(s.dist);
       }
       raf = requestAnimationFrame(tick);
@@ -137,13 +146,16 @@ function Index() {
     s.phase = "jetting";
     s.bar = 4;
     s.dir = 0;
+    s.spd = 40;
+    s.sdir = 0;
     s.stuckAt = 740 + Math.random() * 150;
     setPhase("jetting");
   };
-  const hold = (dir: number) => { st.current.dir = dir; };
+  const hold = (k: "dir" | "sdir", v: number) => { st.current[k] = v; };
   const reset = () => {
-    st.current = { bar: 0, dist: 0, phase: "idle", stuckAt: 0, dir: 0 };
+    st.current = { bar: 0, dist: 0, phase: "idle", stuckAt: 0, dir: 0, spd: 0, sdir: 0, over: 0 };
     setBar(0);
+    setSpd(0);
     setDist(0);
     setPhase("idle");
   };
@@ -153,18 +165,24 @@ function Index() {
       if (st.current.phase !== "jetting") return;
       if (e.code === "ArrowUp") { e.preventDefault(); st.current.dir = 1; }
       if (e.code === "ArrowDown") { e.preventDefault(); st.current.dir = -1; }
+      if (e.code === "ArrowRight") { e.preventDefault(); st.current.sdir = 1; }
+      if (e.code === "ArrowLeft") { e.preventDefault(); st.current.sdir = -1; }
     };
     const up = (e: KeyboardEvent) => {
       if (e.code === "ArrowUp" || e.code === "ArrowDown") st.current.dir = 0;
+      if (e.code === "ArrowLeft" || e.code === "ArrowRight") st.current.sdir = 0;
     };
     window.addEventListener("keydown", down);
     window.addEventListener("keyup", up);
     return () => { window.removeEventListener("keydown", down); window.removeEventListener("keyup", up); };
   }, []);
 
-  const speed = phase === "jetting" ? Math.round((bar / 11) * 160) : 0;
+  const speed = phase === "jetting" ? Math.round(spd) : 0;
   const msg =
-    phase === "jetting" ? (bar > 9 ? MSG.hot : bar < 3 ? MSG.low : MSG.jetting) : MSG[phase as keyof typeof MSG];
+    phase === "jetting"
+      ? bar > 9 ? MSG.hot : spd > 120 ? MSG.fast : bar < 3 ? (spd > 30 ? MSG.weak : MSG.low) : MSG.jetting
+      : MSG[phase as keyof typeof MSG];
+  const spdColor = spd > 140 ? "var(--destructive)" : spd > 120 ? "var(--hot)" : "var(--foreground)";
   const zoneOf = (v: number) => (v >= 9 ? "var(--destructive)" : v >= 6 ? "var(--hot)" : "var(--warn)");
   const zone = zoneOf(bar);
   const SEG = 44;
@@ -172,16 +190,23 @@ function Index() {
   const progress = Math.min(dist / GOAL, 1);
   const stone = (() => {
     const el = pipeRef.current;
-    if (!el || phase !== "stuck") return { x: 0, y: 0 };
+    if (!el || (phase !== "stuck" && phase !== "snapped")) return { x: 0, y: 0 };
     const p = el.getPointAtLength(el.getTotalLength() * Math.min(progress + 0.012, 1));
     return { x: p.x, y: p.y };
   })();
   const critical = phase === "jetting" && bar >= 9;
-  const holdProps = (dir: number) => ({
-    onPointerDown: () => hold(dir),
-    onPointerUp: () => hold(0),
-    onPointerLeave: () => hold(0),
+  const holdProps = (k: "dir" | "sdir", v: number) => ({
+    onPointerDown: (e: React.PointerEvent<HTMLButtonElement>) => {
+      e.currentTarget.setPointerCapture(e.pointerId);
+      hold(k, v);
+    },
+    onPointerUp: () => hold(k, 0),
+    onPointerCancel: () => hold(k, 0),
+    onContextMenu: (e: React.MouseEvent) => e.preventDefault(),
+    style: { touchAction: "none" as const, WebkitUserSelect: "none" as const },
   });
+  const ctrlBtn =
+    "select-none flex h-16 flex-1 items-center justify-center rounded-2xl text-2xl font-extrabold transition-transform active:scale-95 md:h-20";
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -199,21 +224,21 @@ function Index() {
         <ThemeSwitch theme={theme} setTheme={setTheme} />
       </header>
 
-      <main className="mx-auto flex max-w-5xl flex-col items-center gap-8 px-5 pb-16 pt-4">
+      <main className="mx-auto flex max-w-5xl flex-col items-center gap-5 px-4 pb-40 pt-2 md:gap-8 md:px-5 md:pb-16 md:pt-4">
         <h1 className="text-center text-3xl font-extrabold md:text-5xl">
           Website in <span className="text-primary">Erschließung</span>
         </h1>
 
-        <div className="relative w-full max-w-2xl rounded-2xl border border-primary/60 bg-card p-5 text-center text-base shadow-lg md:text-lg">
+        <div className="relative w-full max-w-2xl rounded-2xl border border-primary/60 bg-card p-4 text-center text-sm shadow-lg md:p-5 md:text-lg">
           <p aria-live="polite">{msg}</p>
           <span className="absolute -bottom-[9px] left-1/2 h-4 w-4 -translate-x-1/2 rotate-45 border-b border-r border-primary/60 bg-card" />
         </div>
 
         {/* RS-style sport cockpit */}
         <div className={`w-full max-w-3xl ${critical ? "shake" : ""}`}>
-          <div className="rounded-3xl border border-border p-6"
+          <div className="rounded-3xl border border-border p-4 md:p-6"
             style={{ background: "linear-gradient(180deg, var(--card), var(--gauge))", boxShadow: "0 30px 60px -20px var(--gauge)" }}>
-            <div className="flex h-14 items-end gap-[3px]">
+            <div className="flex h-10 items-end gap-[2px] md:h-14 md:gap-[3px]">
               {Array.from({ length: SEG }, (_, i) => {
                 const v = ((i + 1) / SEG) * MAX_BAR;
                 const on = i < lit;
@@ -235,15 +260,15 @@ function Index() {
             </div>
             <div className="mt-4 grid grid-cols-3 items-end font-mono">
               <div>
-                <div className="text-3xl font-bold" style={{ color: zone }}>{bar.toFixed(1)}</div>
+                <div className="text-2xl font-bold md:text-3xl" style={{ color: zone }}>{bar.toFixed(1)}</div>
                 <div className="text-[10px] uppercase tracking-widest text-muted-foreground">BAR</div>
               </div>
               <div className="text-center">
-                <div className="text-7xl font-bold tabular-nums text-foreground">{speed}</div>
+                <div className="text-5xl font-bold tabular-nums md:text-7xl" style={{ color: spdColor }}>{speed}</div>
                 <div className="text-[10px] uppercase tracking-widest text-muted-foreground">Meter / Sek</div>
               </div>
               <div className="text-right">
-                <div className="text-3xl font-bold text-primary">{Math.round(dist)}</div>
+                <div className="text-2xl font-bold text-primary md:text-3xl">{Math.round(dist)}</div>
                 <div className="text-[10px] uppercase tracking-widest text-muted-foreground">Meter</div>
               </div>
             </div>
@@ -268,6 +293,28 @@ function Index() {
               strokeDasharray={`${dist} 1000`} style={{ filter: "drop-shadow(0 0 6px var(--fiber))" }} />
             <path d={PIPE} pathLength={1000} fill="none" stroke="var(--fiber)" strokeWidth="2" strokeOpacity="0.7"
               strokeDasharray="6 24" strokeDashoffset={-dist * 3} />
+            {phase === "overload" && (
+              <g>
+                {[0, 60, 120, 180, 240, 300].map((a) => (
+                  <line key={a} x1={450} y1={165} x2={450 + Math.cos((a * Math.PI) / 180) * 60} y2={165 + Math.sin((a * Math.PI) / 180) * 60}
+                    stroke="var(--hot)" strokeWidth="5" strokeLinecap="round">
+                    <animate attributeName="stroke-opacity" values="1;0.2;1" dur="0.3s" repeatCount="indefinite" />
+                  </line>
+                ))}
+                <text x="450" y="120" textAnchor="middle" fontSize="40" fontWeight="800" fill="var(--destructive)">PENG!</text>
+              </g>
+            )}
+            {phase === "snapped" && (
+              <g>
+                {[-1, 0, 1].map((d) => (
+                  <line key={d} x1={stone.x} y1={stone.y} x2={stone.x + 18} y2={stone.y + d * 14}
+                    stroke="var(--fiber)" strokeWidth="2" strokeLinecap="round">
+                    <animate attributeName="x2" values={`${stone.x + 10};${stone.x + 22};${stone.x + 10}`} dur="0.25s" repeatCount="indefinite" />
+                  </line>
+                ))}
+                <text x="450" y="125" textAnchor="middle" fontSize="40" fontWeight="800" fill="var(--fiber)">RATSCH!</text>
+              </g>
+            )}
             {phase === "stuck" && (
               <circle r="11" fill="var(--destructive)" cx={stone.x} cy={stone.y}>
                 <animate attributeName="r" from="0" to="11" dur="0.25s" />
@@ -280,38 +327,42 @@ function Index() {
           </div>
         </div>
 
-        <div className="flex flex-col items-center gap-3">
+        <div className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-background/95 p-3 backdrop-blur md:static md:w-full md:max-w-3xl md:border-0 md:bg-transparent md:p-0 md:backdrop-blur-none">
           {phase === "idle" && (
-            <button onClick={start}
-              className="rounded-full bg-primary px-8 py-4 text-lg font-bold text-primary-foreground shadow-lg transition-transform active:scale-95">
+            <button onClick={start} className="h-16 w-full rounded-2xl bg-primary text-xl font-extrabold text-primary-foreground shadow-lg active:scale-95 md:h-20">
               Jetting starten
             </button>
           )}
           {phase === "jetting" && (
-            <div className="flex gap-3">
-              <button {...holdProps(-1)} className="select-none rounded-full border border-border bg-secondary px-7 py-4 text-lg font-bold text-secondary-foreground active:scale-95">
-                − BAR
-              </button>
-              <button {...holdProps(1)} className="select-none rounded-full bg-primary px-7 py-4 text-lg font-bold text-primary-foreground active:scale-95">
-                + BAR
-              </button>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="rounded-2xl border border-border bg-card p-2">
+                <div className="mb-1 text-center font-mono text-[10px] uppercase tracking-widest text-muted-foreground">Druck · BAR</div>
+                <div className="flex gap-2">
+                  <button aria-label="BAR runter" {...holdProps("dir", -1)} className={`${ctrlBtn} bg-secondary text-secondary-foreground`}>−</button>
+                  <button aria-label="BAR hoch" {...holdProps("dir", 1)} className={`${ctrlBtn} bg-primary text-primary-foreground`}>+</button>
+                </div>
+              </div>
+              <div className="rounded-2xl border border-border bg-card p-2">
+                <div className="mb-1 text-center font-mono text-[10px] uppercase tracking-widest text-muted-foreground">Vorschub · m/s</div>
+                <div className="flex gap-2">
+                  <button aria-label="Langsamer" {...holdProps("sdir", -1)} className={`${ctrlBtn} bg-secondary text-secondary-foreground`}>−</button>
+                  <button aria-label="Schneller" {...holdProps("sdir", 1)} className={`${ctrlBtn} bg-gold text-primary-foreground`}>+</button>
+                </div>
+              </div>
             </div>
           )}
-          {phase === "overload" && (
-            <button onClick={reset} className="rounded-full bg-destructive px-8 py-4 text-lg font-bold text-destructive-foreground">
-              Trasse reinigen &amp; neu einblasen
+          {phase !== "idle" && phase !== "jetting" && (
+            <button onClick={reset} className="h-16 w-full rounded-2xl bg-destructive text-lg font-extrabold text-destructive-foreground active:scale-95 md:h-20">
+              {phase === "overload" ? "Trasse reinigen & neu einblasen" : phase === "snapped" ? "Kabel neu spleißen & nochmal" : "Trasse evakuieren (Zurückziehen)"}
             </button>
           )}
-          {phase === "stuck" && (
-            <button onClick={reset} className="rounded-full bg-destructive px-8 py-4 text-lg font-bold text-destructive-foreground">
-              Trasse evakuieren (Zurückziehen)
-            </button>
-          )}
-          <p className="text-xs text-muted-foreground">Buttons gedrückt halten oder Pfeiltasten ↑ ↓ – über 11 BAR platzt das Rohr.</p>
+          <p className="mt-2 hidden text-center text-xs text-muted-foreground md:block">
+            Halten oder Tastatur: ↑ ↓ Druck · ← → Vorschub. Über 11 BAR platzt das Rohr, über 140 m/s reißt das Kabel.
+          </p>
         </div>
       </main>
 
-      <footer className="border-t border-border py-5 text-center text-xs text-muted-foreground">
+      <footer className="border-t border-border pb-28 pt-5 md:pb-5 md:py-5 text-center text-xs text-muted-foreground">
         © {new Date().getFullYear()} OMN-Service UG · Inhabergeführt · 5+ Jahre Branchenerfahrung
       </footer>
       <div className="stripes h-2" />
