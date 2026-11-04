@@ -29,7 +29,7 @@ type Phase = "idle" | "jetting" | "overload" | "stuck" | "done";
 const MAX_BAR = 12;
 const GOAL = 1000; // metres
 
-const MSG: Record<string, string> = {
+const MSG = {
   idle: "Meldung vom Tiefbauamt: Die Webseite befindet sich derzeit in der aktiven Erschließung (Aufbauphase). Bitte haben Sie noch etwas Geduld! Starte den Kompressor, um die Trasse manuell zu kalibrieren.",
   low: "Druck zu gering – das Kabel kriecht nur. Kompressor nachlegen!",
   jetting: "Vortrieb stabil: Geschwindigkeit jetzt weiter erhöhen! Aber halte die BAR-Anzeige im Auge.",
@@ -161,7 +161,7 @@ function Index() {
 
   const speed = phase === "jetting" ? Math.round((bar / 11) * 160) : 0;
   const msg =
-    phase === "jetting" ? (bar > 9 ? MSG.hot : bar < 3 ? MSG.low : MSG.jetting) : MSG[phase];
+    phase === "jetting" ? (bar > 9 ? MSG.hot : bar < 3 ? MSG.low : MSG.jetting) : MSG[phase as keyof typeof MSG];
   const zone = bar >= 9 ? "var(--destructive)" : bar >= 6 ? "var(--hot)" : "var(--warn)";
   const R = 120;
   const C = 2 * Math.PI * R;
