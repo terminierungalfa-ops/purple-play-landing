@@ -178,6 +178,8 @@ function Index() {
     s.spd = 40;
     s.sdir = 0;
     s.stuckAt = 740 + Math.random() * 150;
+    runStartBest.current = bestRef.current;
+    bestNextWrite.current = 0;
     setPhase("jetting");
   };
   const hold = (k: "dir" | "sdir", v: number) => { st.current[k] = v; };
