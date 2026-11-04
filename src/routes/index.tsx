@@ -29,6 +29,23 @@ type Phase = "idle" | "jetting" | "overload" | "stuck" | "snapped";
 const MAX_BAR = 12;
 const GOAL = 1000; // metres
 
+const BEST_KEY = "omn-best";
+const readBest = () => {
+  try {
+    const n = Number(localStorage.getItem(BEST_KEY));
+    return Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
+  } catch {
+    return 0;
+  }
+};
+const writeBest = (v: number) => {
+  try {
+    localStorage.setItem(BEST_KEY, String(Math.max(0, Math.floor(v))));
+  } catch {
+    /* storage blocked (private mode) – record just won't persist */
+  }
+};
+
 const MSG = {
   idle: "Meldung vom Tiefbauamt: Die Webseite befindet sich derzeit in der aktiven Erschließung (Aufbauphase). Bitte haben Sie noch etwas Geduld! Starte den Kompressor, um die Trasse manuell zu kalibrieren.",
   low: "Druck zu gering – das Kabel kriecht nur. Kompressor nachlegen!",
@@ -90,6 +107,9 @@ function Index() {
   const [dist, setDist] = useState(0);
   const [phase, setPhase] = useState<Phase>("idle");
   const [best, setBest] = useState(0);
+  const bestRef = useRef(0);
+  const bestNextWrite = useRef(0);
+  const runStartBest = useRef(0);
   const pipeRef = useRef<SVGPathElement>(null);
   const [spd, setSpd] = useState(0);
   const st = useRef({ bar: 0, dist: 0, phase: "idle" as Phase, stuckAt: 0, dir: 0, spd: 0, sdir: 0, over: 0 });
@@ -97,7 +117,8 @@ function Index() {
   useEffect(() => {
     const saved = localStorage.getItem("omn-theme") as Theme | null;
     if (saved) setThemeState(saved);
-    setBest(Number(localStorage.getItem("omn-best") || 0));
+    setBest(readBest());
+    bestRef.current = readBest();
   }, []);
   useEffect(() => {
     document.documentElement.className = `theme-${theme}`;
@@ -123,12 +144,20 @@ function Index() {
         if (s.bar > 11) s.phase = "overload";
         else if (s.over > 0.8) s.phase = "snapped";
         else if (s.dist >= s.stuckAt) { s.dist = s.stuckAt; s.phase = "stuck"; }
+        if (s.dist > bestRef.current && now >= bestNextWrite.current) {
+          bestNextWrite.current = now + 250;
+          bestRef.current = Math.floor(s.dist);
+          writeBest(bestRef.current);
+          setBest(bestRef.current);
+        }
         if (s.phase !== "jetting") {
           s.dir = 0;
           s.sdir = 0;
           setPhase(s.phase);
-          const b = Math.max(Number(localStorage.getItem("omn-best") || 0), Math.round(s.dist));
-          localStorage.setItem("omn-best", String(b));
+          const b = Math.max(bestRef.current, Math.floor(s.dist));
+          bestRef.current = b;
+          bestNextWrite.current = 0;
+          writeBest(b);
           setBest(b);
         }
         setBar(s.bar);
@@ -149,6 +178,8 @@ function Index() {
     s.spd = 40;
     s.sdir = 0;
     s.stuckAt = 740 + Math.random() * 150;
+    runStartBest.current = bestRef.current;
+    bestNextWrite.current = 0;
     setPhase("jetting");
   };
   const hold = (k: "dir" | "sdir", v: number) => { st.current[k] = v; };
@@ -323,7 +354,12 @@ function Index() {
           </svg>
           <div className="mt-2 flex justify-between font-mono text-xs text-muted-foreground">
             <span>{Math.round(dist)} / {GOAL} m</span>
-            <span>Rekord: {best} m</span>
+            <span>
+              Rekord: {best} m
+              {phase === "jetting" && dist > runStartBest.current ? (
+                <span className="text-gold"> · neuer Rekord!</span>
+              ) : null}
+            </span>
           </div>
         </div>
 
