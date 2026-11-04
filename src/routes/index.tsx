@@ -29,6 +29,23 @@ type Phase = "idle" | "jetting" | "overload" | "stuck" | "snapped";
 const MAX_BAR = 12;
 const GOAL = 1000; // metres
 
+const BEST_KEY = "omn-best";
+const readBest = () => {
+  try {
+    const n = Number(localStorage.getItem(BEST_KEY));
+    return Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
+  } catch {
+    return 0;
+  }
+};
+const writeBest = (v: number) => {
+  try {
+    localStorage.setItem(BEST_KEY, String(Math.max(0, Math.floor(v))));
+  } catch {
+    /* storage blocked (private mode) – record just won't persist */
+  }
+};
+
 const MSG = {
   idle: "Meldung vom Tiefbauamt: Die Webseite befindet sich derzeit in der aktiven Erschließung (Aufbauphase). Bitte haben Sie noch etwas Geduld! Starte den Kompressor, um die Trasse manuell zu kalibrieren.",
   low: "Druck zu gering – das Kabel kriecht nur. Kompressor nachlegen!",
