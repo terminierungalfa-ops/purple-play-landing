@@ -117,7 +117,8 @@ function Index() {
   useEffect(() => {
     const saved = localStorage.getItem("omn-theme") as Theme | null;
     if (saved) setThemeState(saved);
-    setBest(Number(localStorage.getItem("omn-best") || 0));
+    setBest(readBest());
+    bestRef.current = readBest();
   }, []);
   useEffect(() => {
     document.documentElement.className = `theme-${theme}`;
