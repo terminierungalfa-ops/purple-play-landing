@@ -107,6 +107,9 @@ function Index() {
   const [dist, setDist] = useState(0);
   const [phase, setPhase] = useState<Phase>("idle");
   const [best, setBest] = useState(0);
+  const bestRef = useRef(0);
+  const bestNextWrite = useRef(0);
+  const runStartBest = useRef(0);
   const pipeRef = useRef<SVGPathElement>(null);
   const [spd, setSpd] = useState(0);
   const st = useRef({ bar: 0, dist: 0, phase: "idle" as Phase, stuckAt: 0, dir: 0, spd: 0, sdir: 0, over: 0 });
