@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type PointerEvent as RPE, type MouseEvent as RME } from "react";
 import logo from "@/assets/omn-logo.png";
 
 export const Route = createFileRoute("/")({
@@ -196,13 +196,13 @@ function Index() {
   })();
   const critical = phase === "jetting" && bar >= 9;
   const holdProps = (k: "dir" | "sdir", v: number) => ({
-    onPointerDown: (e: React.PointerEvent<HTMLButtonElement>) => {
+    onPointerDown: (e: RPE<HTMLButtonElement>) => {
       e.currentTarget.setPointerCapture(e.pointerId);
       hold(k, v);
     },
     onPointerUp: () => hold(k, 0),
     onPointerCancel: () => hold(k, 0),
-    onContextMenu: (e: React.MouseEvent) => e.preventDefault(),
+    onContextMenu: (e: RME) => e.preventDefault(),
     style: { touchAction: "none" as const, WebkitUserSelect: "none" as const },
   });
   const ctrlBtn =
