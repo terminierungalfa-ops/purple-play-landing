@@ -73,30 +73,30 @@
 /* Lila dark (default) */
 :root, .theme-lila {
   --radius: 1rem;
-  --background: oklch(0.2 0.06 300);
+  --background: oklch(0.15 0.015 300);
   --foreground: oklch(0.96 0.02 310);
-  --card: oklch(0.26 0.08 300);
+  --card: oklch(0.2 0.02 300);
   --card-foreground: oklch(0.96 0.02 310);
-  --popover: oklch(0.26 0.08 300);
+  --popover: oklch(0.2 0.02 300);
   --popover-foreground: oklch(0.96 0.02 310);
   --primary: oklch(0.68 0.24 315);
   --primary-foreground: oklch(0.15 0.04 300);
-  --secondary: oklch(0.32 0.09 300);
+  --secondary: oklch(0.25 0.025 300);
   --secondary-foreground: oklch(0.96 0.02 310);
-  --muted: oklch(0.3 0.07 300);
-  --muted-foreground: oklch(0.78 0.06 310);
-  --accent: oklch(0.34 0.1 300);
+  --muted: oklch(0.26 0.02 300);
+  --muted-foreground: oklch(0.72 0.03 310);
+  --accent: oklch(0.27 0.03 300);
   --accent-foreground: oklch(0.96 0.02 310);
   --destructive: oklch(0.6 0.23 25);
   --destructive-foreground: oklch(0.98 0 0);
-  --border: oklch(0.4 0.1 305);
-  --input: oklch(0.4 0.1 305);
+  --border: oklch(0.3 0.03 305);
+  --input: oklch(0.3 0.03 305);
   --ring: oklch(0.68 0.24 315);
   --gold: oklch(0.82 0.16 80);
   --fiber: oklch(0.82 0.15 220);
   --warn: oklch(0.85 0.17 90);
   --hot: oklch(0.72 0.18 55);
-  --gauge: oklch(0.14 0.04 300);
+  --gauge: oklch(0.1 0.01 300);
 }
 
 .theme-light {
