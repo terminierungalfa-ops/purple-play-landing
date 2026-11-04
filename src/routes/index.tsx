@@ -144,12 +144,20 @@ function Index() {
         if (s.bar > 11) s.phase = "overload";
         else if (s.over > 0.8) s.phase = "snapped";
         else if (s.dist >= s.stuckAt) { s.dist = s.stuckAt; s.phase = "stuck"; }
+        if (s.dist > bestRef.current && now >= bestNextWrite.current) {
+          bestNextWrite.current = now + 250;
+          bestRef.current = Math.floor(s.dist);
+          writeBest(bestRef.current);
+          setBest(bestRef.current);
+        }
         if (s.phase !== "jetting") {
           s.dir = 0;
           s.sdir = 0;
           setPhase(s.phase);
-          const b = Math.max(Number(localStorage.getItem("omn-best") || 0), Math.round(s.dist));
-          localStorage.setItem("omn-best", String(b));
+          const b = Math.max(bestRef.current, Math.floor(s.dist));
+          bestRef.current = b;
+          bestNextWrite.current = 0;
+          writeBest(b);
           setBest(b);
         }
         setBar(s.bar);
