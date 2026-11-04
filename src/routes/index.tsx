@@ -78,7 +78,7 @@ function ThemeSwitch({ theme, setTheme }: { theme: Theme; setTheme: (t: Theme) =
   );
 }
 
-const PIPE = "M 20 70 C 120 10, 200 130, 300 70 S 480 10, 580 70 S 760 130, 880 70";
+const PIPE = "M 90 165 H 775 Q 815 165 815 125 V 58";
 
 function Index() {
   const [loading, setLoading] = useState(true);
@@ -88,7 +88,7 @@ function Index() {
   const [phase, setPhase] = useState<Phase>("idle");
   const [best, setBest] = useState(0);
   const pipeRef = useRef<SVGPathElement>(null);
-  const st = useRef({ bar: 0, dist: 0, phase: "idle" as Phase, stuckAt: 0 });
+  const st = useRef({ bar: 0, dist: 0, phase: "idle" as Phase, stuckAt: 0, dir: 0 });
 
   useEffect(() => {
     const saved = localStorage.getItem("omn-theme") as Theme | null;
@@ -111,13 +111,13 @@ function Index() {
       last = now;
       const s = st.current;
       if (s.phase === "jetting") {
-        s.bar = Math.max(0, s.bar - 1.6 * dt);
+        s.bar = Math.max(0, Math.min(MAX_BAR, s.bar + s.dir * 3 * dt));
         const speed = (s.bar / 11) * 160;
-        s.dist += speed * dt;
+        s.dist += speed * dt * 0.6;
         if (s.bar > 11) s.phase = "overload";
-        else if (s.dist >= s.stuckAt) s.phase = "stuck";
-        else if (s.dist >= GOAL) s.phase = "done";
+        else if (s.dist >= s.stuckAt) { s.dist = s.stuckAt; s.phase = "stuck"; }
         if (s.phase !== "jetting") {
+          s.dir = 0;
           setPhase(s.phase);
           const b = Math.max(Number(localStorage.getItem("omn-best") || 0), Math.round(s.dist));
           localStorage.setItem("omn-best", String(b));
@@ -132,41 +132,43 @@ function Index() {
     return () => cancelAnimationFrame(raf);
   }, []);
 
-  const pump = () => {
+  const start = () => {
     const s = st.current;
-    if (s.phase === "idle") {
-      s.phase = "jetting";
-      s.stuckAt = Math.random() < 0.55 ? 250 + Math.random() * 650 : Infinity;
-      setPhase("jetting");
-    }
-    if (s.phase === "jetting") s.bar = Math.min(MAX_BAR, s.bar + 0.9);
+    s.phase = "jetting";
+    s.bar = 4;
+    s.dir = 0;
+    s.stuckAt = 740 + Math.random() * 150;
+    setPhase("jetting");
   };
+  const hold = (dir: number) => { st.current.dir = dir; };
   const reset = () => {
-    st.current = { bar: 0, dist: 0, phase: "idle", stuckAt: 0 };
+    st.current = { bar: 0, dist: 0, phase: "idle", stuckAt: 0, dir: 0 };
     setBar(0);
     setDist(0);
     setPhase("idle");
   };
 
   useEffect(() => {
-    const k = (e: KeyboardEvent) => {
-      if (e.code === "Space") {
-        e.preventDefault();
-        if (st.current.phase === "idle" || st.current.phase === "jetting") pump();
-      }
+    const down = (e: KeyboardEvent) => {
+      if (st.current.phase !== "jetting") return;
+      if (e.code === "ArrowUp") { e.preventDefault(); st.current.dir = 1; }
+      if (e.code === "ArrowDown") { e.preventDefault(); st.current.dir = -1; }
     };
-    window.addEventListener("keydown", k);
-    return () => window.removeEventListener("keydown", k);
+    const up = (e: KeyboardEvent) => {
+      if (e.code === "ArrowUp" || e.code === "ArrowDown") st.current.dir = 0;
+    };
+    window.addEventListener("keydown", down);
+    window.addEventListener("keyup", up);
+    return () => { window.removeEventListener("keydown", down); window.removeEventListener("keyup", up); };
   }, []);
 
   const speed = phase === "jetting" ? Math.round((bar / 11) * 160) : 0;
   const msg =
     phase === "jetting" ? (bar > 9 ? MSG.hot : bar < 3 ? MSG.low : MSG.jetting) : MSG[phase as keyof typeof MSG];
-  const zone = bar >= 9 ? "var(--destructive)" : bar >= 6 ? "var(--hot)" : "var(--warn)";
-  const R = 120;
-  const C = 2 * Math.PI * R;
-  const arc = 0.75 * C;
-  const fill = arc * Math.min(bar / MAX_BAR, 1);
+  const zoneOf = (v: number) => (v >= 9 ? "var(--destructive)" : v >= 6 ? "var(--hot)" : "var(--warn)");
+  const zone = zoneOf(bar);
+  const SEG = 44;
+  const lit = Math.round((Math.min(bar, MAX_BAR) / MAX_BAR) * SEG);
   const progress = Math.min(dist / GOAL, 1);
   const stone = (() => {
     const el = pipeRef.current;
@@ -175,11 +177,16 @@ function Index() {
     return { x: p.x, y: p.y };
   })();
   const critical = phase === "jetting" && bar >= 9;
+  const holdProps = (dir: number) => ({
+    onPointerDown: () => hold(dir),
+    onPointerUp: () => hold(0),
+    onPointerLeave: () => hold(0),
+  });
 
   return (
     <div className="min-h-screen bg-background text-foreground">
       {loading && <Loader onDone={() => setLoading(false)} />}
-      <div className="stripes h-4" />
+      <div className="stripes h-3" />
 
       <header className="mx-auto flex max-w-5xl items-center justify-between px-5 py-4">
         <div className="flex items-center gap-3">
@@ -197,45 +204,69 @@ function Index() {
           Website in <span className="text-primary">Erschließung</span>
         </h1>
 
-        {/* Speech bubble */}
-        <div className="relative w-full max-w-2xl rounded-2xl border-2 border-primary bg-card p-5 text-center text-base shadow-lg md:text-lg">
+        <div className="relative w-full max-w-2xl rounded-2xl border border-primary/60 bg-card p-5 text-center text-base shadow-lg md:text-lg">
           <p aria-live="polite">{msg}</p>
-          <span className="absolute -bottom-3 left-1/2 h-6 w-6 -translate-x-1/2 rotate-45 border-b-2 border-r-2 border-primary bg-card" />
+          <span className="absolute -bottom-[9px] left-1/2 h-4 w-4 -translate-x-1/2 rotate-45 border-b border-r border-primary/60 bg-card" />
         </div>
 
-        {/* Gauge */}
-        <div className={critical ? "shake" : ""}>
-          <div
-            className="relative grid h-72 w-72 place-items-center rounded-full md:h-80 md:w-80"
-            style={{
-              background: "radial-gradient(circle at 50% 35%, var(--card), var(--gauge) 70%)",
-              boxShadow: "0 25px 50px -12px var(--gauge), inset 0 -10px 30px var(--gauge), 0 0 0 6px var(--secondary)",
-            }}
-          >
-            <svg viewBox="0 0 300 300" className="absolute inset-0 h-full w-full">
-              <circle cx="150" cy="150" r={R} fill="none" stroke="var(--muted)" strokeWidth="14"
-                strokeDasharray={`${arc} ${C}`} transform="rotate(135 150 150)" strokeLinecap="round" />
-              <circle cx="150" cy="150" r={R} fill="none" stroke={zone} strokeWidth="14"
-                strokeDasharray={`${fill} ${C}`} transform="rotate(135 150 150)" strokeLinecap="round"
-                style={{ filter: `drop-shadow(0 0 8px ${zone})`, transition: "stroke .2s" }} />
-            </svg>
-            <div className="z-10 text-center font-mono">
-              <div className="text-6xl font-bold text-gold">{speed}</div>
-              <div className="text-xs uppercase tracking-widest text-muted-foreground">Meter / Sek</div>
-              <div className="mt-3 text-2xl font-bold" style={{ color: zone }}>{bar.toFixed(1)}</div>
-              <div className="text-xs uppercase tracking-widest text-muted-foreground">BAR</div>
+        {/* RS-style sport cockpit */}
+        <div className={`w-full max-w-3xl ${critical ? "shake" : ""}`}>
+          <div className="rounded-3xl border border-border p-6"
+            style={{ background: "linear-gradient(180deg, var(--card), var(--gauge))", boxShadow: "0 30px 60px -20px var(--gauge)" }}>
+            <div className="flex h-14 items-end gap-[3px]">
+              {Array.from({ length: SEG }, (_, i) => {
+                const v = ((i + 1) / SEG) * MAX_BAR;
+                const on = i < lit;
+                const c = zoneOf(v);
+                return (
+                  <div key={i} className="flex-1 rounded-sm transition-all duration-75"
+                    style={{
+                      height: `${40 + (i / SEG) * 60}%`,
+                      background: on ? c : "var(--muted)",
+                      opacity: on ? 1 : 0.35,
+                      boxShadow: on ? `0 0 10px ${c}` : "none",
+                      transform: "skewX(-18deg)",
+                    }} />
+                );
+              })}
+            </div>
+            <div className="mt-1 flex justify-between font-mono text-[10px] text-muted-foreground">
+              {[0, 2, 4, 6, 8, 10, 12].map((n) => <span key={n}>{n}</span>)}
+            </div>
+            <div className="mt-4 grid grid-cols-3 items-end font-mono">
+              <div>
+                <div className="text-3xl font-bold" style={{ color: zone }}>{bar.toFixed(1)}</div>
+                <div className="text-[10px] uppercase tracking-widest text-muted-foreground">BAR</div>
+              </div>
+              <div className="text-center">
+                <div className="text-7xl font-bold tabular-nums text-foreground">{speed}</div>
+                <div className="text-[10px] uppercase tracking-widest text-muted-foreground">Meter / Sek</div>
+              </div>
+              <div className="text-right">
+                <div className="text-3xl font-bold text-primary">{Math.round(dist)}</div>
+                <div className="text-[10px] uppercase tracking-widest text-muted-foreground">Meter</div>
+              </div>
             </div>
           </div>
         </div>
 
-        {/* Pipe */}
+        {/* NVT -> straight -> 90° -> house */}
         <div className="w-full max-w-4xl rounded-2xl border border-border bg-card p-4">
-          <svg viewBox="0 0 900 140" className="w-full">
-            <path d={PIPE} fill="none" stroke="var(--muted-foreground)" strokeOpacity="0.45" strokeWidth="22" strokeLinecap="round" />
-            <path ref={pipeRef} d={PIPE} fill="none" stroke="var(--gauge)" strokeWidth="14" strokeLinecap="round" />
+          <svg viewBox="0 -30 900 250" className="w-full">
+            {/* ground */}
+            <line x1="0" y1="60" x2="900" y2="60" stroke="var(--border)" strokeDasharray="4 6" />
+            {/* NVT box */}
+            <rect x="20" y="130" width="70" height="70" rx="6" fill="var(--secondary)" stroke="var(--primary)" strokeWidth="2" />
+            <text x="55" y="172" textAnchor="middle" fontSize="16" fontWeight="700" fill="var(--foreground)" fontFamily="var(--font-mono)">NVT</text>
+            {/* house */}
+            <path d="M 780 58 V 20 L 815 -5 L 850 20 V 58 Z" fill="var(--secondary)" stroke="var(--primary)" strokeWidth="2" transform="translate(0 0)" />
+            <rect x="805" y="34" width="20" height="24" fill="var(--gauge)" />
+            {/* pipe */}
+            <path d={PIPE} fill="none" stroke="var(--muted-foreground)" strokeOpacity="0.45" strokeWidth="22" />
+            <path ref={pipeRef} d={PIPE} fill="none" stroke="var(--gauge)" strokeWidth="14" />
             <path d={PIPE} pathLength={1000} fill="none" stroke="var(--fiber)" strokeWidth="4" strokeLinecap="round"
               strokeDasharray={`${dist} 1000`} style={{ filter: "drop-shadow(0 0 6px var(--fiber))" }} />
-            <path d={PIPE} pathLength={1000} fill="none" stroke="var(--fiber)" strokeWidth="2" strokeOpacity="0.8"
+            <path d={PIPE} pathLength={1000} fill="none" stroke="var(--fiber)" strokeWidth="2" strokeOpacity="0.7"
               strokeDasharray="6 24" strokeDashoffset={-dist * 3} />
             {phase === "stuck" && (
               <circle r="11" fill="var(--destructive)" cx={stone.x} cy={stone.y}>
@@ -249,13 +280,22 @@ function Index() {
           </div>
         </div>
 
-        {/* Controls */}
-        <div className="flex flex-col items-center gap-2">
-          {(phase === "idle" || phase === "jetting") && (
-            <button onClick={pump}
+        <div className="flex flex-col items-center gap-3">
+          {phase === "idle" && (
+            <button onClick={start}
               className="rounded-full bg-primary px-8 py-4 text-lg font-bold text-primary-foreground shadow-lg transition-transform active:scale-95">
-              Kabel einjetten
+              Jetting starten
             </button>
+          )}
+          {phase === "jetting" && (
+            <div className="flex gap-3">
+              <button {...holdProps(-1)} className="select-none rounded-full border border-border bg-secondary px-7 py-4 text-lg font-bold text-secondary-foreground active:scale-95">
+                − BAR
+              </button>
+              <button {...holdProps(1)} className="select-none rounded-full bg-primary px-7 py-4 text-lg font-bold text-primary-foreground active:scale-95">
+                + BAR
+              </button>
+            </div>
           )}
           {phase === "overload" && (
             <button onClick={reset} className="rounded-full bg-destructive px-8 py-4 text-lg font-bold text-destructive-foreground">
@@ -267,12 +307,7 @@ function Index() {
               Trasse evakuieren (Zurückziehen)
             </button>
           )}
-          {phase === "done" && (
-            <button onClick={reset} className="rounded-full bg-gold px-8 py-4 text-lg font-bold text-primary-foreground">
-              Nochmal einblasen
-            </button>
-          )}
-          <p className="text-xs text-muted-foreground">Klicken oder Leertaste – Druck zwischen 3 und 9 BAR halten.</p>
+          <p className="text-xs text-muted-foreground">Buttons gedrückt halten oder Pfeiltasten ↑ ↓ – über 11 BAR platzt das Rohr.</p>
         </div>
       </main>
 
